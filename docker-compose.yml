@@ -4,15 +4,43 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: ipax_db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ipax_cache
       POSTGRES_USER: ipax
-      POSTGRES_PASSWORD: ipax_dev_2024
-    ports:
-      - '5432:5432'
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ipax_dev_2024}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ipax -d ipax_cache"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: ipax_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://ipax:${DB_PASSWORD:-ipax_dev_2024}@postgres:5432/ipax_cache
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      TRANSPARENCIA_API_KEY: ${TRANSPARENCIA_API_KEY:-}
+    expose:
+      - "3001"
+
+  frontend:
+    build: ./frontend
+    container_name: ipax_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:-80}:80"
 
 volumes:
   pgdata:
